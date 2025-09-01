@@ -471,6 +471,57 @@
     }
   }
 
+  // helper: anime le remplissage complet de la grille en faisant "tomber" les symbols du haut vers le bas
+  function fillGridWithDropAnimation(newGrid){
+    return new Promise(resolve=>{
+      const animations = [];
+      const total = ROWS * COLUMNS;
+      // apply values but position them above, then release par ligne pour effet top->bottom
+      for (let r=0;r<ROWS;r++){
+        for (let c=0;c<COLUMNS;c++){
+          const val = newGrid[r][c];
+          grid[r][c] = val;
+          const idx = r*COLUMNS + c;
+          const el = tiles[idx];
+          el.innerHTML = '';
+          if (!val){
+            // empty cell
+          } else {
+            const def = SYMBOLS[val];
+            if (def.img){
+              const img = document.createElement('img');
+              img.src = def.img;
+              img.onerror = ()=> { el.innerHTML = '🍄'; };
+              el.appendChild(img);
+            } else if (def.emoji){
+              el.textContent = def.emoji;
+            } else {
+              el.textContent = val;
+            }
+          }
+          // put tile above the board before dropping
+          el.classList.add('dropping');
+          el.style.transform = `translateY(-500px)`; // start well above
+          // stagger by row so it looks like symbols fall top->bottom
+          const rowDelay = r * 90 + randInt(70);
+          animations.push(new Promise(res=>{
+            setTimeout(()=>{
+              // release to natural position
+              el.style.transform = '';
+              // wait for transition to finish, then clean
+              setTimeout(()=>{
+                el.classList.remove('dropping');
+                el.style.transform = '';
+                res();
+              }, 460 + randInt(120));
+            }, rowDelay);
+          }));
+        }
+      }
+      Promise.all(animations).then(()=> resolve());
+    });
+  }
+
   // spin logic using bet and wheel animation
   let spinLocked = false; // <-- verrou pour empêcher spins répétés (2s)
 
@@ -483,6 +534,11 @@
     updateUI();
     winDisplay.textContent = 'GAINS: 0';
 
+    // collect final symbols, animate quick random flashes, then drop whole grid from top->bottom
+    const finalGrid = Array.from({length: ROWS}, ()=>Array(COLUMNS).fill(null));
+    let completions = 0;
+    const total = ROWS * COLUMNS;
+
     tiles.forEach((t,i)=>{
       const flashes = 6 + randInt(6);
       let j=0;
@@ -491,37 +547,45 @@
         const tmpId = getRandomSymbolId();
         const idx = i;
         const el = tiles[idx];
-        // quick render tmp (no grid change)
         el.innerHTML = '';
         const def = SYMBOLS[tmpId];
-        if (def.img){
+        if (def && def.img){
           const img = document.createElement('img'); img.src = def.img;
           img.style.maxWidth = '68%'; img.style.maxHeight = '68%'; img.style.pointerEvents='none';
           el.appendChild(img);
-        } else { el.textContent = def.emoji; }
+        } else if (def && def.emoji) {
+          el.textContent = def.emoji;
+        } else {
+          el.textContent = tmpId;
+        }
         j++;
         if (j>=flashes){
           clearInterval(intr);
           const r = Math.floor(i / COLUMNS), c = i % COLUMNS;
           const finalId = getRandomSymbolId();
-          setTile(r,c,finalId);
+          finalGrid[r][c] = finalId;
+          completions++;
+          // when all tiles have chosen their final symbol, animate fill-from-top
+          if (completions === total){
+            (async ()=>{
+              await fillGridWithDropAnimation(finalGrid);
+              // after drop animation, apply RTP catchup and resolve cascades
+              const gap = currentGap();
+              if (gap > RTP_TOLERANCE * totalBets){
+                const allowed = Math.min(MAX_CATCHUP_PER_SPIN, Math.ceil(gap));
+                injectForcedGroup(allowed);
+              }
+              const gained = await resolveCascades();
+              totalPayouts += gained;
+              credits += gained;
+              updateUI();
+              winDisplay.textContent = 'GAINS: ' + gained;
+              console.log('RTP', (totalBets>0? (totalPayouts/totalBets):0).toFixed(4), 'bets', totalBets, 'paid', totalPayouts);
+            })();
+          }
         }
       }, 40 + randInt(60));
     });
-
-    setTimeout(async ()=>{
-      const gap = currentGap();
-      if (gap > RTP_TOLERANCE * totalBets){
-        const allowed = Math.min(MAX_CATCHUP_PER_SPIN, Math.ceil(gap));
-        injectForcedGroup(allowed);
-      }
-      const gained = await resolveCascades();
-      totalPayouts += gained;
-      credits += gained;
-      updateUI();
-      winDisplay.textContent = 'GAINS: ' + gained;
-      console.log('RTP', (totalBets>0? (totalPayouts/totalBets):0).toFixed(4), 'bets', totalBets, 'paid', totalPayouts);
-    }, 900);
   }
 
   // wheel click -> animate and spin
