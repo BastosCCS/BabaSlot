@@ -472,6 +472,8 @@
   }
 
   // spin logic using bet and wheel animation
+  let spinLocked = false; // <-- verrou pour empêcher spins répétés (2s)
+
   async function spinOnce(){
     if (credits < bet) { alert('Crédits insuffisants'); return; }
 
@@ -524,11 +526,15 @@
 
   // wheel click -> animate and spin
   wheel.addEventListener('click', ()=>{
+    if (spinLocked) return; // ignore clicks pendant le cooldown
+    spinLocked = true;
     // visual rotation
     wheel.classList.remove('spin');
     void wheel.offsetWidth;
     wheel.classList.add('spin');
     spinOnce();
+    // cooldown 2s
+    setTimeout(()=> { spinLocked = false; }, 2000);
   });
 
   // bet controls (now the + / - next to the wheel)
