@@ -539,28 +539,21 @@
     let completions = 0;
     const total = ROWS * COLUMNS;
 
+    // clear visuals first so only placeholder animation shows during flashes
+    tiles.forEach(el => { el.innerHTML = ''; el.classList.remove('spinning'); });
+
     tiles.forEach((t,i)=>{
       const flashes = 6 + randInt(6);
       let j=0;
       const intr = setInterval(()=>{
-        // show temporary random symbol visually
-        const tmpId = getRandomSymbolId();
         const idx = i;
         const el = tiles[idx];
-        el.innerHTML = '';
-        const def = SYMBOLS[tmpId];
-        if (def && def.img){
-          const img = document.createElement('img'); img.src = def.img;
-          img.style.maxWidth = '68%'; img.style.maxHeight = '68%'; img.style.pointerEvents='none';
-          el.appendChild(img);
-        } else if (def && def.emoji) {
-          el.textContent = def.emoji;
-        } else {
-          el.textContent = tmpId;
-        }
+        // show a simple spinning placeholder (no symbol) to avoid the old per-tile reveal
+        el.classList.add('spinning');
         j++;
         if (j>=flashes){
           clearInterval(intr);
+          el.classList.remove('spinning');
           const r = Math.floor(i / COLUMNS), c = i % COLUMNS;
           const finalId = getRandomSymbolId();
           finalGrid[r][c] = finalId;
@@ -584,7 +577,7 @@
             })();
           }
         }
-      }, 40 + randInt(60));
+      }, 60 + randInt(40));
     });
   }
 
